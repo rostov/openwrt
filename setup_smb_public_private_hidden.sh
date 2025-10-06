@@ -32,22 +32,31 @@ if [ -z "$DEV" ]; then
 fi
 echo "[✓] Найден диск: $DEV"
 
+# --- Определяем, раздел это или весь диск ---
+if [ -b "${DEV}1" ]; then
+    DEV="${DEV}1"
+    echo "[i] Использую раздел: $DEV"
+fi
+
 ### === 4. Проверяем, не смонтирован ли диск уже ===
 EXIST_MNT=$(mount | grep -m1 "$DEV" | awk '{print $3}')
-if [ -n "$EXIST_MNT" ]; then
+if [ -n "$EXIST_MNT" ] && [ "$EXIST_MNT" != "$MOUNT_POINT" ]; then
     echo "[!] Диск уже смонтирован в $EXIST_MNT, размонтирую..."
     umount "$EXIST_MNT" || {
         echo "[x] Не удалось размонтировать $EXIST_MNT"
         exit 1
     }
+    EXIST_MNT=""
 fi
 
 ### === 5. Создание точки монтирования ===
-mkdir -p "$MOUNT_POINT"
-mountpoint -q "$MOUNT_POINT" || mount "$DEV" "$MOUNT_POINT"
-if [ $? -ne 0 ]; then
-    echo "[x] Не удалось смонтировать $DEV в $MOUNT_POINT"
-    exit 1
+if [ -z "$EXIST_MNT" ]; then
+    mkdir -p "$MOUNT_POINT"
+    mount "$DEV" "$MOUNT_POINT"
+    if [ $? -ne 0 ]; then
+        echo "[x] Не удалось смонтировать $DEV в $MOUNT_POINT"
+        exit 1
+    fi
 fi
 echo "[✓] Диск смонтирован в $MOUNT_POINT"
 
