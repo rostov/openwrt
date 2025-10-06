@@ -27,21 +27,31 @@ fi
 ### === 3. Определяем первый подключённый диск (/dev/sda, /dev/sdb, ...) ===
 DEV=$(for d in /dev/sd?; do [ -b "$d" ] && echo "$d" && break; done)
 if [ -z "$DEV" ]; then
-    echo "[!] Не найден подключённый диск!"
+    echo "[x] Не найден подключённый диск!"
     exit 1
 fi
 echo "[✓] Найден диск: $DEV"
 
-### === 4. Создание точки монтирования ===
+### === 4. Проверяем, не смонтирован ли диск уже ===
+EXIST_MNT=$(mount | grep -m1 "$DEV" | awk '{print $3}')
+if [ -n "$EXIST_MNT" ]; then
+    echo "[!] Диск уже смонтирован в $EXIST_MNT, размонтирую..."
+    umount "$EXIST_MNT" || {
+        echo "[x] Не удалось размонтировать $EXIST_MNT"
+        exit 1
+    }
+fi
+
+### === 5. Создание точки монтирования ===
 mkdir -p "$MOUNT_POINT"
 mountpoint -q "$MOUNT_POINT" || mount "$DEV" "$MOUNT_POINT"
 if [ $? -ne 0 ]; then
-    echo "[!] Не удалось смонтировать $DEV в $MOUNT_POINT"
+    echo "[x] Не удалось смонтировать $DEV в $MOUNT_POINT"
     exit 1
 fi
 echo "[✓] Диск смонтирован в $MOUNT_POINT"
 
-### === 5. Добавляем автоподключение в /etc/config/fstab ===
+### === 6. Добавляем автоподключение в /etc/config/fstab ===
 UUID=$(block info "$DEV" | grep -o 'UUID="[^"]*"' | cut -d'"' -f2)
 uci delete fstab.@mount[0] 2>/dev/null
 uci set fstab.@mount[-1]=mount
@@ -56,7 +66,7 @@ fi
 uci commit fstab
 echo "[✓] Добавлена запись в fstab (UUID=${UUID:-N/A})"
 
-### === 6. Создаём папки ===
+### === 7. Создаём папки ===
 mkdir -p "$MOUNT_POINT/public" "$MOUNT_POINT/private"
 chmod 777 "$MOUNT_POINT/public"
 chmod 700 "$MOUNT_POINT/private"
@@ -64,7 +74,7 @@ chown nobody:nogroup "$MOUNT_POINT/public"
 chown root:root "$MOUNT_POINT/private"
 echo "[✓] Папки public и private созданы"
 
-### === 7. Настройка ksmbd ===
+### === 8. Настройка ksmbd ===
 uci -q delete ksmbd
 uci set ksmbd.globals=globals
 uci set ksmbd.globals.workgroup='WORKGROUP'
@@ -96,7 +106,7 @@ uci set ksmbd.@share[-1].valid_users="$PRIV_USER"
 
 uci commit ksmbd
 
-### === 8. Добавляем пользователей ===
+### === 9. Добавляем пользователей ===
 echo "[*] Добавляем пользователей Samba..."
 ksmbd.adduser -d "$PUB_USER" >/dev/null 2>&1
 ksmbd.adduser "$PUB_USER" <<EOF
@@ -110,11 +120,11 @@ read -p "Введите пароль для приватного пользов�
 ksmbd.adduser -d "$PRIV_USER" >/dev/null 2>&1
 echo -e "$PRIV_PASS\n$PRIV_PASS" | ksmbd.adduser "$PRIV_USER"
 
-### === 9. Перезапуск ksmbd ===
+### === 10. Перезапуск ksmbd ===
 /etc/init.d/ksmbd restart
 /etc/init.d/ksmbd enable
 
-### === 10. Настройка автоотключения диска ===
+### === 11. Настройка автоотключения диска ===
 SECS=$((SPINDOWN_MIN * 60 / 5))
 if [ $SECS -gt 1 ] && [ $SECS -lt 241 ]; then
     echo "[*] Настраиваю автоотключение питания диска через $SPINDOWN_MIN мин..."
@@ -123,7 +133,7 @@ else
     echo "[!] Время простоя $SPINDOWN_MIN мин вне допустимого диапазона (1–240). Пропуск."
 fi
 
-### === 11. Вывод результата ===
+### === 12. Вывод результата ===
 ROUTER_IP=$(ip -4 addr show br-lan | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | head -n1)
 [ -z "$ROUTER_IP" ] && IP=$(ip -4 addr show | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | grep -v '127\.0\.0\.1' | head -n1)
 
