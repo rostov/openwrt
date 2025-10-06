@@ -143,7 +143,7 @@ else
 fi
 
 ### === 12. Вывод результата ===
-ROUTER_IP=$(ip -4 addr show br-lan | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | head -n1)
+ROUTER_IP=$(ip -4 addr show br-lan 2>/dev/null | awk '/inet / {print $2}' | cut -d'/' -f1)
 [ -z "$ROUTER_IP" ] && IP=$(ip -4 addr show | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | grep -v '127\.0\.0\.1' | head -n1)
 
 echo
