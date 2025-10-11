@@ -16,6 +16,29 @@ SPINDOWN_MIN=10                  # Минуты простоя перед отк
 
 echo "=== Настройка SMB-шары на OpenWRT ==="
 
+# Сброс конфигурации ksmbd и очистка пользователей
+
+echo "[*] Останавливаем ksmbd..."
+/etc/init.d/ksmbd stop 2>/dev/null
+
+echo "[*] Удаляем все секции конфигурации ksmbd..."
+# Получаем все индексы секций типа share и user
+for i in $(uci show ksmbd | grep -E '@(share|user)\[[0-9]+\]=' | sed -E 's/.*\[(.*)\].*/\1/' | sort -rn); do
+    uci delete ksmbd.@share[$i] 2>/dev/null
+    uci delete ksmbd.@user[$i] 2>/dev/null
+done
+
+# Сохраняем изменения
+uci commit ksmbd
+
+echo "[*] Очищаем базу пользователей ksmbd..."
+rm -f /etc/ksmbd/ksmbdpwd.db
+
+echo "[*] Перезапускаем ksmbd..."
+/etc/init.d/ksmbd start 2>/dev/null
+
+echo "[✓] Конфигурация ksmbd и база пользователей очищены."
+
 ### === 2. Проверка и установка block-mount (для blkid/block info) ===
 if ! command -v block >/dev/null 2>&1; then
     echo "[*] Устанавливаем пакет block-mount (для block info)..."
