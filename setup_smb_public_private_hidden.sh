@@ -84,19 +84,55 @@ fi
 echo "[✓] Диск смонтирован в $MOUNT_POINT"
 
 ### === 6. Добавляем автоподключение в /etc/config/fstab ===
+# Получаем UUID диска
 UUID=$(block info "$DEV" | grep -o 'UUID="[^"]*"' | cut -d'"' -f2)
-uci delete fstab.@mount[0] 2>/dev/null
-uci set fstab.@mount[-1]=mount
-uci set fstab.@mount[-1].target="$MOUNT_POINT"
-uci set fstab.@mount[-1].enabled='1'
-uci set fstab.@mount[-1].fstype='ext4'
-if [ -n "$UUID" ]; then
-    uci set fstab.@mount[-1].uuid="$UUID"
+
+echo "Настройка автоматического монтирования $DEV в $MOUNT_POINT"
+
+# Создаем точку монтирования
+mkdir -p "$MOUNT_POINT"
+
+# Ищем существующую запись для этого диска
+EXISTING_SECTION=$(uci show fstab | grep -E "uuid=$UUID|device=$DEV" | cut -d'.' -f2 | cut -d'=' -f1 | head -1)
+
+if [ -n "$EXISTING_SECTION" ]; then
+    echo "Обновляем существующую секцию: $EXISTING_SECTION"
+    SECTION_NAME="$EXISTING_SECTION"
 else
-    uci set fstab.@mount[-1].device="$DEV"
+    echo "Создаем новую секцию монтирования"
+    SECTION_NAME=$(uci add fstab mount)
 fi
+
+# Устанавливаем параметры
+uci set fstab."$SECTION_NAME".target="$MOUNT_POINT"
+uci set fstab."$SECTION_NAME".enabled='1'
+
+if [ -n "$UUID" ]; then
+    echo "Используем UUID: $UUID"
+    uci set fstab."$SECTION_NAME".uuid="$UUID"
+else
+    echo "Используем device: $DEV"
+    uci set fstab."$SECTION_NAME".device="$DEV"
+fi
+
+# Коммитим изменения
 uci commit fstab
-echo "[✓] Добавлена запись в fstab (UUID=${UUID:-N/A})"
+
+echo "[✓] Запись в fstab добавлена/обновлена"
+
+# Применяем изменения
+echo "Применяем настройки..."
+/etc/init.d/fstab restart
+sleep 2
+block mount
+
+# Проверяем результат
+if mount | grep -q "$MOUNT_POINT"; then
+    echo "[✓] Диск успешно смонтирован в $MOUNT_POINT"
+else
+    echo "[!] Диск не смонтирован автоматически, проверьте вручную:"
+    echo "    mount $DEV $MOUNT_POINT"
+fi
 
 ### === 7. Создаём папки ===
 mkdir -p "$MOUNT_POINT/public" "$MOUNT_POINT/private"
