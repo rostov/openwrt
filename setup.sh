@@ -3,6 +3,11 @@
 # Скрипт начальной настройки OpenWRT
 # Сохранить как /tmp/setup.sh, сделать исполняемым и запустить
 
+# ========== НАСТРОЙКИ СЕТЕЙ WiFi ==========
+SSID_2GHZ="RouteRich_22"
+SSID_5GHZ="RouteRich_55"
+# Пароль будет запрошен во время выполнения скрипта
+
 # Список пакетов для установки (можно дополнять - каждый пакет на новой строке)
 PACKAGES="
 # Основная оболочка вместо ash
@@ -89,6 +94,88 @@ get_clean_packages() {
     echo "$1" | grep -v '^#' | grep -v '^$'
 }
 
+# Функция для настройки WiFi
+setup_wifi() {
+    log "Настройка WiFi сетей..."
+    
+    # Запрашиваем пароль
+    echo ""
+    echo "=== НАСТРОЙКА WIFI СЕТЕЙ ==="
+    read -s -p "Введите пароль для WiFi сетей $SSID_2GHZ и $SSID_5GHZ: " WIFI_PASSWORD
+    echo
+    read -s -p "Повторите пароль: " WIFI_PASSWORD_CONFIRM
+    echo
+    
+    if [ "$WIFI_PASSWORD" != "$WIFI_PASSWORD_CONFIRM" ]; then
+        error "Пароли не совпадают! Настройка WiFi пропущена."
+        return 1
+    fi
+    
+    if [ -z "$WIFI_PASSWORD" ] || [ ${#WIFI_PASSWORD} -lt 8 ]; then
+        error "Пароль должен быть не менее 8 символов! Настройка WiFi пропущена."
+        return 1
+    fi
+    
+    log "Настраиваю WiFi сети..."
+    
+    # Создаем резервную копию конфигурации
+    cp /etc/config/wireless /etc/config/wireless.backup.$(date +%Y%m%d_%H%M%S) 2>/dev/null
+    
+    # Генерируем хэш пароля
+    local key=$(echo -n "$WIFI_PASSWORD" | openssl sha256 -hmac "salt" | cut -d' ' -f2 | cut -c1-32)
+    
+    # Настройка 2.4 GHz
+    uci set wireless.@wifi-device[0].disabled='0'
+    uci set wireless.@wifi-device[0].channel='auto'
+    uci set wireless.@wifi-device[0].htmode='HT40'
+    uci set wireless.@wifi-device[0].country='RU'
+    uci set wireless.@wifi-device[0].txpower='20'
+    
+    uci set wireless.@wifi-iface[0].ssid="$SSID_2GHZ"
+    uci set wireless.@wifi-iface[0].key="$WIFI_PASSWORD"
+    uci set wireless.@wifi-iface[0].encryption='psk2'
+    uci set wireless.@wifi-iface[0].isolate='0'
+    
+    # Настройка 5 GHz (если есть второй радио)
+    if [ -n "$(uci get wireless.@wifi-device[1] 2>/dev/null)" ]; then
+        uci set wireless.@wifi-device[1].disabled='0'
+        uci set wireless.@wifi-device[1].channel='auto'
+        uci set wireless.@wifi-device[1].htmode='HE160'
+        uci set wireless.@wifi-device[1].country='RU'
+        uci set wireless.@wifi-device[1].txpower='23'
+        
+        uci set wireless.@wifi-iface[1].ssid="$SSID_5GHZ"
+        uci set wireless.@wifi-iface[1].key="$WIFI_PASSWORD"
+        uci set wireless.@wifi-iface[1].encryption='psk2'
+        uci set wireless.@wifi-iface[1].isolate='0'
+    else
+        warn "Второе радио (5 GHz) не найдено, настраиваю только 2.4 GHz"
+    fi
+    
+    # Применяем изменения
+    uci commit wireless
+    if [ $? -eq 0 ]; then
+        log "Конфигурация WiFi применена успешно"
+        
+        # Перезапускаем WiFi
+        wifi reload
+        sleep 3
+        
+        log "WiFi сети настроены:"
+        log "  2.4 GHz: $SSID_2GHZ"
+        if [ -n "$(uci get wireless.@wifi-device[1] 2>/dev/null)" ]; then
+            log "  5 GHz: $SSID_5GHZ"
+        fi
+    else
+        error "Ошибка применения конфигурации WiFi"
+        return 1
+    fi
+    
+    # Очищаем переменные с паролями
+    unset WIFI_PASSWORD
+    unset WIFI_PASSWORD_CONFIRM
+}
+
 # Обновление списка пакетов
 log "Обновление списка пакетов..."
 opkg update
@@ -116,6 +203,9 @@ if [ -f /bin/bash ]; then
 else
     error "Bash не установлен, пропускаем смену оболочки"
 fi
+
+# Настройка WiFi сетей
+setup_wifi
 
 # Создание .bashrc для root со всеми настройками
 log "Создание .bashrc для root..."
@@ -196,7 +286,12 @@ log "Настройка завершена!"
 echo ""
 echo "Что было сделано:"
 echo "✓ Установлены основные пакеты"
-echo "✓ Настроен bash как оболочка по умолчанию" 
+echo "✓ Настроен bash как оболочка по умолчанию"
+echo "✓ Настроены WiFi сети:"
+echo "  - 2.4 GHz: $SSID_2GHZ"
+if [ -n "$(uci get wireless.@wifi-device[1] 2>/dev/null)" ]; then
+    echo "  - 5 GHz: $SSID_5GHZ"
+fi
 echo "✓ Настроена история команд с временными метками"
 echo "✓ Созданы полезные алиасы и функции"
 echo "✓ Настроен цветной prompt"
