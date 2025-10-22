@@ -110,8 +110,8 @@ done
 
 # Смена оболочки по умолчанию на bash
 log "Настройка bash как оболочки по умолчанию..."
-if [ -f /usr/bin/bash ]; then
-    sed -i 's|/bin/ash|/usr/bin/bash|g' /etc/passwd
+if [ -f /bin/bash ]; then
+    sed -i 's|/bin/ash|/bin/bash|g' /etc/passwd
     check_success "Bash установлен как оболочка по умолчанию" "Не удалось изменить оболочку по умолчанию"
 else
     error "Bash не установлен, пропускаем смену оболочки"
