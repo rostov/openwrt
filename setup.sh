@@ -24,6 +24,11 @@ htop
 nano-full
 # Альтернатива curl для загрузки
 wget
+# Проверка доступности удалённого сервера
+luci-app-statistics
+collectd-mod-ping
+# Графики температуры
+collectd-mod-sensors
 "
 
 # Дополнительные пакеты (опциональные)
